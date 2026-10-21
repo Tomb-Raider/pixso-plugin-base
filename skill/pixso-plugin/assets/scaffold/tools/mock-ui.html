@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Мок окна плагина</title></head>
+<body style="margin:0;background:#666;display:flex;justify-content:center;padding:20px">
+<iframe id="f" src="../ui.html"
+  style="width:720px;height:520px;border:0;border-radius:8px;background:#fff"></iframe>
+<script>
+/**
+ * Мок песочницы Pixso: открывает ui.html в iframe и отвечает ему теми же
+ * сообщениями, что настоящий main.js. Позволяет проверять интерфейс и его
+ * состояния без приложения.
+ *
+ * Состояния задаются адресом:
+ *   ?frames=0   — на странице нет кадров
+ *   ?picked=0   — кадры есть, но все галки сняты
+ *   ?unpick=2   — снята галка со второй строки (галка «все» станет промежуточной)
+ *   ?run=1      — сразу запустить работу
+ *
+ * Открывать по HTTP (python3 -m http.server 8765), а не двойным щелчком:
+ * с file:// браузер считает iframe чужим origin.
+ */
+const MOCK = new URLSearchParams(location.search);
+const f = document.getElementById('f');
+function send(msg) { f.contentWindow.postMessage({ pluginMessage: msg }, '*'); }
+
+const FRAMES = [
+  { id: 'n1', name: '01 · Титул', width: 1920, height: 1080, color: '#101216', layers: 12 },
+  { id: 'n2', name: '02 · Формулы', width: 1920, height: 1080, color: '#f4f5f8', layers: 7 },
+  { id: 'n3', name: '03 · Итоги квартала', width: 1440, height: 1080, color: '#dfe9ff', layers: 21 }
+];
+
+async function png(w, h, color, label) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = color; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#199AF0';
+  g.font = '600 ' + Math.round(h / 8) + 'px sans-serif';
+  g.fillText(label, w * 0.07, h * 0.55);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+function list() {
+  const frames = MOCK.get('frames') === '0' ? [] : FRAMES;
+  send({ type: 'frames', pageName: 'Тестовая страница', fromSelection: true,
+    frames: frames.map((x) => ({ id: x.id, name: x.name, width: x.width, height: x.height })) });
+  if (frames.length) { applyPicks(); }
+}
+
+async function thumbs() {
+  for (const fr of FRAMES) {
+    send({ type: 'thumb', id: fr.id,
+      png: await png(320, Math.round(320 * fr.height / fr.width), fr.color, fr.name.slice(0, 8)) });
+  }
+}
+
+/* Галки живут в самом интерфейсе, снять их можно только его же средствами — и
+   только когда строки нарисованы. Ждём не такт (доставка postMessage не обязана
+   его опередить), а появление строк. */
+let picksDone = false;
+function applyPicks(tries = 40) {
+  if (picksDone) { return; }
+  const d = f.contentDocument;
+  const rows = d ? d.querySelectorAll('.row input[type=checkbox]') : [];
+  if (!rows.length) {
+    if (tries > 0) { setTimeout(() => applyPicks(tries - 1), 50); }
+    return;
+  }
+  picksDone = true;
+  if (MOCK.get('picked') === '0') {
+    const all = d.getElementById('checkAll');
+    if (all && all.checked) { all.checked = false; all.onchange(); }
+  }
+  const one = Number(MOCK.get('unpick'));
+  if (one >= 1 && rows[one - 1]) { rows[one - 1].click(); }
+}
+
+window.addEventListener('message', async (e) => {
+  const m = e.data && e.data.pluginMessage;
+  if (!m) { return; }
+
+  if (m.type === 'ui-ready') {
+    send({ type: 'hello', channel: 'mock', via: m.via, pluginId: 'mock', command: 'open' });
+    send({ type: 'settings', settings: { deep: true } });
+    list();
+    if (MOCK.get('frames') !== '0') { await thumbs(); }
+    if (MOCK.get('run') === '1') { f.contentDocument.getElementById('go').click(); }
+  }
+
+  /* «Перечитать холст»: настоящий main.js сбрасывает кэш миниатюр и снимает их
+     заново — мок обязан делать то же, иначе кнопка выглядит сломанной. */
+  if (m.type === 'refresh') { list(); await thumbs(); }
+
+  if (m.type === 'run') {
+    const ids = (m.options.frameIds && m.options.frameIds.length)
+      ? m.options.frameIds : FRAMES.map((x) => x.id);
+    send({ type: 'run-start', total: ids.length });
+    let i = 0;
+    for (const id of ids) {
+      const fr = FRAMES.find((x) => x.id === id);
+      send({ type: 'progress', done: i, total: ids.length, name: fr.name });
+      await new Promise((r) => setTimeout(r, 250));
+      send({ type: 'frame-data', index: i, name: fr.name,
+             layers: m.options.deep === false ? Math.round(fr.layers / 3) : fr.layers });
+      i++;
+    }
+    send({ type: 'run-done', total: ids.length });
+  }
+});
+</script>
+</body>
+</html>

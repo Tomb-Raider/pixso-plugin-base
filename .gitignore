@@ -1,0 +1,6 @@
+.DS_Store
+
+# Сборки каркаса, если запускать его прямо здесь
+skill/pixso-plugin/assets/scaffold/local-build/
+skill/pixso-plugin/assets/scaffold/release/
+skill/pixso-plugin/assets/scaffold/publish/

@@ -1,0 +1,8 @@
+{
+  "id": "scaffold_plugin",
+  "name": "Каркас плагина",
+  "main": "./main.js",
+  "ui": "./ui.html",
+  "permissions": ["activeDocument", "currentPage", "currentSelection"],
+  "editorType": ["pixso", "dev"]
+}

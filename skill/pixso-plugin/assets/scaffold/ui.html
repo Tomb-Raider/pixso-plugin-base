@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Каркас плагина</title>
+<style>
+  /* Тема по DAIS: токены SDDS FinAI из файла темы sdds_finai__light.css
+     (пакет @salutejs/sdds-themes). Своя ДС подставляется здесь же, разметка
+     дальше ссылается только на эти переменные. */
+  :root {
+    --accent: #199AF0;          /* surface-accent */
+    --accent-hover: #36A7F2;    /* surface-accent-hover */
+    --accent-deep: #0B7ECB;     /* text-accent, акцентный текст на светлом */
+    --accent-soft: #ECF6FC;     /* surface-accent-minor, светлая подложка */
+    --text-primary: #13181BF5; --text-secondary: #485056B0; --text-tertiary: #707C847A;
+    --surface: #FFFFFF;         /* surface-solid-card */
+    --background: #F2F5F8;      /* background-primary */
+    --fill: #ADB9C238;          /* surface-transparent-secondary, заливка контролов */
+    --fill-hover: #ADB9C247;    /* surface-transparent-secondary-hover */
+    --fill-soft: #D5DFE642;     /* surface-transparent-primary, наведение на строку */
+    --outline: #D5DFE6;         /* outline-solid-primary */
+    --success: #108E26; --warning: #FA5F05; --error: #E31227;
+    --radius-control: 10px;     /* кнопка S, 40 px */
+    --radius-small: 8px;        /* кнопка XS, 32 px */
+    --disabled-opacity: .4;     /* выключенный контрол в SDDS FinAI */
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    font: 12px/1.5 "SB Sans Text", "SB Sans Display", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--text-primary); background: var(--surface);
+    -webkit-font-smoothing: antialiased;
+  }
+  body { display: flex; flex-direction: column; }
+  .hidden { display: none !important; }
+  .muted { color: var(--text-secondary); }
+
+  input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    width: 18px; height: 18px; margin: 0; flex: 0 0 auto;
+    border-radius: 6px; border: 1.5px solid var(--text-tertiary);
+    background: var(--surface); cursor: pointer;
+    display: inline-grid; place-content: center;
+  }
+  input[type="checkbox"]::before {
+    content: ''; width: 12px; height: 12px; transform: scale(0);
+    background: no-repeat center / contain
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6.5 4.8 9 10 3.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+  input[type="checkbox"]:checked::before { transform: scale(1); }
+  input[type="checkbox"]:indeterminate { background: var(--accent); border-color: var(--accent); }
+  input[type="checkbox"]:indeterminate::before {
+    transform: scale(1);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 6h6.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  }
+
+  .main { flex: 1 1 auto; display: flex; min-height: 0; }
+  .list-pane {
+    flex: 0 0 240px; display: flex; flex-direction: column;
+    border-right: 1px solid var(--outline);
+  }
+  .list-head {
+    flex: 0 0 auto; padding: 16px 12px 12px; display: flex; align-items: center; gap: 8px;
+    font-weight: 600; color: var(--text-secondary);
+  }
+  .list-head label { display: flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0; }
+  .list-head .grow { flex: 1; }
+  .frame-list {
+    flex: 1 1 auto; overflow-y: auto; padding: 6px 12px 14px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .row {
+    display: flex; align-items: flex-start; gap: 6px; flex: 0 0 auto;
+    padding: 10px 8px 8px; border-radius: 8px; cursor: pointer;
+  }
+  .row:hover { background: var(--fill-soft); }
+  .row.on { background: var(--accent-soft); }
+  .num {
+    flex: 0 0 auto; min-width: 14px; text-align: center; font-size: 11px; font-weight: 600;
+    color: var(--text-tertiary); font-variant-numeric: tabular-nums;
+  }
+  .row.on .num { color: var(--accent-deep); }
+  .meta { flex: 0 0 104px; min-width: 0; padding-left: 4px; display: flex; flex-direction: column; gap: 2px; }
+  /* Кадр миниатюры — 16:9; кадр другой пропорции вписывается целиком */
+  .thumb { width: 100px; height: 56px; border-radius: 4px; background: var(--fill); object-fit: contain; }
+  .name {
+    font-size: 11px; font-weight: 500; color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .row.on .name { color: var(--text-primary); }
+  .list-msg {
+    flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+    padding: 24px 16px; text-align: center; color: var(--text-secondary);
+  }
+  .list-msg.err { flex: 0 0 auto; display: block; text-align: left; padding: 10px 4px; color: var(--error); }
+
+  .center { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .canvas {
+    /* position нужен, иначе кнопка журнала прицепится не к холсту, а к окну */
+    position: relative;
+    flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center;
+    padding: 22px; background: var(--background);
+    background-image: radial-gradient(var(--outline) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+  .canvas img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .empty { text-align: center; color: var(--text-secondary); }
+  .empty-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .log {
+    flex: 0 0 auto; max-height: 200px; overflow-y: auto;
+    padding: 10px 18px; border-top: 1px solid var(--outline);
+    font-size: 11px; white-space: pre-wrap; word-break: break-word;
+  }
+  .log:empty { display: none; }
+  .log .err { color: var(--error); }
+  .log .warn { color: var(--warning); }
+  .log .ok { color: var(--success); }
+  /* Каретка прокрутки: прозрачная дорожка, серая каретка, в покое исчезает */
+  .log::-webkit-scrollbar, .frame-list::-webkit-scrollbar,
+  .side::-webkit-scrollbar { width: 8px; height: 8px; }
+  .log::-webkit-scrollbar-track, .frame-list::-webkit-scrollbar-track,
+  .side::-webkit-scrollbar-track { background: transparent; }
+  .log::-webkit-scrollbar-thumb, .frame-list::-webkit-scrollbar-thumb,
+  .side::-webkit-scrollbar-thumb {
+    background: transparent; border-radius: 4px;
+    border: 2px solid transparent; background-clip: content-box;
+    transition: background .2s ease;
+  }
+  .log.is-scrolling::-webkit-scrollbar-thumb, .frame-list.is-scrolling::-webkit-scrollbar-thumb,
+  .side.is-scrolling::-webkit-scrollbar-thumb { background: var(--text-tertiary); background-clip: content-box; }
+
+  .side-pane { flex: 0 0 240px; display: flex; flex-direction: column; border-left: 1px solid var(--outline); }
+  .side { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px; }
+  .opt-title { font-weight: 600; color: var(--text-secondary); margin: 18px 0 8px; }
+  .opt-title:first-child { margin-top: 0; }
+  label.opt { display: flex; align-items: flex-start; gap: 9px; padding: 6px 0; cursor: pointer; }
+  label.opt b { display: block; font-weight: 600; }
+  label.opt small { display: block; color: var(--text-secondary); }
+  .side-foot { flex: 0 0 auto; padding: 12px 16px; border-top: 1px solid var(--outline); }
+  button.primary {
+    font: inherit; width: 100%; padding: 12px; font-weight: 600; cursor: pointer;
+    background: var(--accent); border: 0; color: #fff; border-radius: var(--radius-control);
+  }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  button.primary:disabled { opacity: var(--disabled-opacity); cursor: default; }
+  button.ghost {
+    font: inherit; font-weight: 600; font-size: 11px; border: 0; background: var(--fill);
+    color: var(--text-primary); border-radius: var(--radius-small); padding: 5px 10px; cursor: pointer;
+  }
+  button.ghost:hover { background: var(--fill-hover); }
+  .log-toggle { position: absolute; right: 16px; bottom: 16px; }
+</style>
+</head>
+<body>
+
+<div class="main">
+  <aside class="list-pane">
+    <div class="list-head">
+      <label><input type="checkbox" id="checkAll" checked>
+        <span id="count">Читаю холст…</span></label>
+      <span class="grow"></span>
+      <button class="ghost" id="refresh" type="button" title="Перечитать холст">↻</button>
+    </div>
+    <div class="frame-list" id="frames"></div>
+  </aside>
+
+  <section class="center">
+    <div class="canvas">
+      <div class="empty" id="empty">
+        <div class="empty-title">Нет кадров</div>
+        <div class="muted">Выделите кадры на холсте</div>
+      </div>
+      <img id="preview" class="hidden" alt="">
+      <button class="ghost log-toggle hidden" id="logToggle" type="button">Журнал</button>
+    </div>
+    <div class="log hidden" id="log"></div>
+  </section>
+
+  <aside class="side-pane">
+    <div class="side" id="side">
+      <div class="opt-title">Настройки</div>
+      <label class="opt"><input type="checkbox" id="deep" checked>
+        <span><b>Считать вложенные</b><small>слои внутри групп тоже</small></span></label>
+    </div>
+    <div class="side-foot">
+      <button class="primary" id="go" type="button" disabled>Посчитать слои</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+'use strict';
+
+function $(id) { return document.getElementById(id); }
+
+/* ------------------------------------------------------------------ */
+/* Канал наверх                                                        */
+/* ------------------------------------------------------------------ */
+
+var transports = (function () {
+  var list = [];
+  try { if (window.parent && window.parent !== window) { list.push({ name: 'parent', win: window.parent }); } } catch (e) {}
+  try {
+    if (window.top && window.top !== window && window.top !== window.parent) {
+      list.push({ name: 'top', win: window.top });
+    }
+  } catch (e) {}
+  return list;
+})();
+
+var activeTransport = null, upstreamEnvelope = null, pluginId = null, msgCounter = 0;
+var inDevWrapper = false;
+try { inDevWrapper = window.location.origin === 'http://localhost:5201'; } catch (e) {}
+
+function post(win, msg) {
+  if (msg && msg.__id === undefined) { msg.__id = ++msgCounter; }
+  var plain = { pluginMessage: msg };
+  if (pluginId) { plain.pluginId = pluginId; }
+  if (upstreamEnvelope) {
+    for (var key in upstreamEnvelope) {
+      if (Object.prototype.hasOwnProperty.call(upstreamEnvelope, key)) { plain[key] = upstreamEnvelope[key]; }
+    }
+  }
+  var data = plain;
+  try { if (inDevWrapper && win === window.parent) { data = { __fromPluginUi: true, payload: plain }; } } catch (e) {}
+  try { win.postMessage(data, '*'); return true; } catch (e) { return false; }
+}
+
+function send(msg) {
+  if (activeTransport) { post(activeTransport.win, msg); return; }
+  if (transports.length) { post(transports[0].win, msg); }
+}
+
+function handshake() {
+  for (var i = 0; i < transports.length; i++) {
+    post(transports[i].win, { type: 'ui-ready', via: transports[i].name });
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Состояние окна                                                      */
+/* ------------------------------------------------------------------ */
+
+var state = { list: [], order: [], selected: {}, thumbs: {}, activeId: null,
+              picked: 0, busy: false, gotFrames: false, acked: false };
+
+function log(text, cls) {
+  var div = document.createElement('div');
+  if (cls) { div.className = cls; }
+  div.textContent = text;
+  $('log').appendChild(div);
+  syncLogToggle();
+  if (cls === 'err') { setLogOpen(true); }
+}
+
+function setLogOpen(open) {
+  $('log').classList.toggle('hidden', !open);
+  $('logToggle').textContent = open ? 'Скрыть журнал' : 'Журнал';
+}
+
+function syncLogToggle() {
+  $('logToggle').classList.toggle('hidden', !$('log').children.length);
+}
+
+$('logToggle').onclick = function () { setLogOpen($('log').classList.contains('hidden')); };
+
+/** Каретка прокрутки живёт только пока крутят. */
+function autoHideScroll(el) {
+  if (!el) { return; }
+  var timer = null;
+  el.addEventListener('scroll', function () {
+    el.className += el.className.indexOf('is-scrolling') === -1 ? ' is-scrolling' : '';
+    clearTimeout(timer);
+    timer = setTimeout(function () { el.className = el.className.replace(/\s*is-scrolling/g, ''); }, 800);
+  }, { passive: true });
+}
+
+function plural(n, one, few, many) {
+  var mod10 = n % 10, mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) { return one; }
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) { return few; }
+  return many;
+}
+function count(n, one, few, many) { return n + ' ' + plural(n, one, few, many); }
+
+function pngUrl(bytes) {
+  var raw = (bytes instanceof Uint8Array) ? bytes : new Uint8Array(bytes || []);
+  try { return URL.createObjectURL(new Blob([raw], { type: 'image/png' })); } catch (e) { return ''; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Список кадров                                                       */
+/* ------------------------------------------------------------------ */
+
+function frameById(id) {
+  for (var i = 0; i < state.list.length; i++) { if (state.list[i].id === id) { return state.list[i]; } }
+  return null;
+}
+
+function listMessage(text, cls) {
+  var box = $('frames');
+  box.textContent = '';
+  var div = document.createElement('div');
+  div.className = 'list-msg' + (cls === 'err' ? ' err' : '');
+  div.textContent = text;
+  box.appendChild(div);
+}
+
+function renderFrames(frames) {
+  state.gotFrames = true;
+  state.list = frames;
+  state.order = frames.map(function (f) { return f.id; });
+  frames.forEach(function (f) {
+    if (!(f.id in state.selected)) { state.selected[f.id] = true; }
+  });
+
+  if (!frames.length) {
+    listMessage('Выделите кадры на холсте');
+    $('count').textContent = 'Нет кадров';
+    $('checkAll').classList.add('hidden');
+    $('checkAll').checked = false;
+    $('checkAll').indeterminate = false;
+    state.picked = 0;
+    state.activeId = null;
+    showPreview(null);
+    updateGo();
+    return;
+  }
+
+  var box = $('frames');
+  box.textContent = '';
+  frames.forEach(function (f, index) { box.appendChild(buildRow(f, index)); });
+  updateCounts();
+  setActive(state.activeId && frameById(state.activeId) ? state.activeId : frames[0].id);
+}
+
+function buildRow(f, index) {
+  var row = document.createElement('div');
+  row.className = 'row' + (f.id === state.activeId ? ' on' : '');
+  row.__frameId = f.id;
+
+  var num = document.createElement('span');
+  num.className = 'num';
+  num.textContent = index + 1;
+
+  var check = document.createElement('input');
+  check.type = 'checkbox';
+  check.checked = state.selected[f.id] !== false;
+  check.onclick = function (e) { e.stopPropagation(); };
+  check.onchange = function () { state.selected[f.id] = check.checked; updateCounts(); };
+
+  var thumb = document.createElement('img');
+  thumb.className = 'thumb';
+  thumb.alt = '';
+  if (state.thumbs[f.id]) { thumb.src = state.thumbs[f.id]; }
+
+  var meta = document.createElement('div');
+  meta.className = 'meta';
+  var name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = f.name;
+  name.title = f.name + ' · ' + f.width + '×' + f.height;
+  meta.appendChild(thumb); meta.appendChild(name);
+
+  row.appendChild(num); row.appendChild(check); row.appendChild(meta);
+  row.onclick = function () { setActive(f.id); };
+  return row;
+}
+
+function updateCounts() {
+  var total = state.order.length, picked = 0;
+  state.order.forEach(function (id) { if (state.selected[id] !== false) { picked++; } });
+  $('count').textContent = total
+    ? picked + ' из ' + total + ' ' + plural(total, 'кадра', 'кадров', 'кадров')
+    : 'Нет кадров';
+  $('checkAll').classList.toggle('hidden', !total);
+  $('checkAll').checked = total > 0 && picked === total;
+  $('checkAll').indeterminate = picked > 0 && picked < total;
+  state.picked = picked;
+  updateGo();
+}
+
+function updateGo() {
+  $('go').disabled = state.busy || !state.picked;
+  $('go').textContent = state.picked
+    ? 'Посчитать слои в ' + count(state.picked, 'кадре', 'кадрах', 'кадрах')
+    : 'Посчитать слои';
+}
+
+function setActive(id) {
+  if (!id) { return; }
+  state.activeId = id;
+  var kids = $('frames').children;
+  for (var i = 0; i < kids.length; i++) {
+    if (!kids[i].__frameId) { continue; }
+    kids[i].className = 'row' + (kids[i].__frameId === id ? ' on' : '');
+  }
+  showPreview(state.thumbs[id] || null);
+}
+
+function showPreview(src) {
+  $('preview').classList.toggle('hidden', !src);
+  $('empty').classList.toggle('hidden', !!src);
+  if (src) { $('preview').src = src; }
+}
+
+$('checkAll').onchange = function () {
+  if (!state.order.length) { $('checkAll').checked = false; return; }
+  var on = $('checkAll').checked;
+  state.order.forEach(function (id) { state.selected[id] = on; });
+  renderFrames(state.list);
+};
+
+$('refresh').onclick = function () {
+  if (state.busy) { return; }
+  state.thumbs = {};
+  send({ type: 'refresh' });
+};
+
+$('deep').onchange = function () { send({ type: 'save-settings', settings: readOptions() }); };
+
+function readOptions() {
+  return { deep: $('deep').checked };
+}
+
+/* ------------------------------------------------------------------ */
+/* Запуск работы                                                       */
+/* ------------------------------------------------------------------ */
+
+$('go').onclick = function () {
+  if (state.busy || !state.picked) { return; }
+  state.busy = true;
+  state.acked = false;
+  $('log').textContent = '';
+  setLogOpen(false);
+  updateGo();
+
+  var options = readOptions();
+  options.frameIds = state.order.filter(function (id) { return state.selected[id] !== false; });
+  send({ type: 'save-settings', settings: readOptions() });
+  send({ type: 'run', options: options });
+
+  /* Кнопка не должна оставаться нажатой навсегда, если команда не дошла. */
+  setTimeout(function () {
+    if (state.acked || !state.busy) { return; }
+    state.busy = false;
+    updateGo();
+    log('Команда из окна не дошла до кода плагина. Так бывает в некоторых сборках '
+      + 'Pixso: перезапустите плагин.', 'err');
+  }, 3000);
+};
+
+/* ------------------------------------------------------------------ */
+/* Приём сообщений                                                     */
+/* ------------------------------------------------------------------ */
+
+window.addEventListener('message', function (e) {
+  var raw = e.data;
+  var msg = raw && raw.pluginMessage;
+  if (!msg) { return; }
+  if (!upstreamEnvelope && typeof raw === 'object') {
+    upstreamEnvelope = {};
+    for (var k in raw) { if (k !== 'pluginMessage') { upstreamEnvelope[k] = raw[k]; } }
+  }
+
+  if (msg.type === 'hello') {
+    if (msg.pluginId && msg.pluginId !== pluginId) { pluginId = msg.pluginId; handshake(); }
+    if (msg.via && msg.via !== 'auto' && !activeTransport) {
+      for (var t = 0; t < transports.length; t++) {
+        if (transports[t].name === msg.via) { activeTransport = transports[t]; }
+      }
+    }
+  }
+  else if (msg.type === 'settings') {
+    if (msg.settings) { $('deep').checked = msg.settings.deep !== false; }
+  }
+  else if (msg.type === 'frames') { renderFrames(msg.frames || []); }
+  else if (msg.type === 'thumb') {
+    var url = pngUrl(msg.png);
+    if (!url) { return; }
+    state.thumbs[msg.id] = url;
+    var kids = $('frames').children;
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].__frameId === msg.id) {
+        var img = kids[i].querySelector ? kids[i].querySelector('.thumb') : null;
+        if (img) { img.src = url; }
+      }
+    }
+    if (msg.id === state.activeId) { showPreview(url); }
+  }
+  else if (msg.type === 'run-start') { state.acked = true; log('Запущено: ' + count(msg.total, 'кадр', 'кадра', 'кадров')); }
+  else if (msg.type === 'frame-data') {
+    log('«' + msg.name + '»: ' + count(msg.layers, 'слой', 'слоя', 'слоёв') + '.');
+  }
+  else if (msg.type === 'run-done') {
+    state.busy = false;
+    updateGo();
+    log('Готово: обработано ' + count(msg.total, 'кадр', 'кадра', 'кадров') + '.', 'ok');
+    setLogOpen(true);
+  }
+  else if (msg.type === 'error') {
+    state.busy = false;
+    updateGo();
+    log(msg.message, 'err');
+    if (!state.gotFrames) { listMessage(msg.message, 'err'); }
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Старт                                                               */
+/* ------------------------------------------------------------------ */
+
+autoHideScroll($('log'));
+autoHideScroll($('frames'));
+autoHideScroll($('side'));
+
+listMessage('Читаю холст…');
+handshake();
+setTimeout(function () { if (!activeTransport) { handshake(); } }, 700);
+setTimeout(function () { if (!activeTransport) { handshake(); } }, 1800);
+
+/* Если за 2,5 с не пришло ничего — скажем об этом, а не будем крутить «читаю». */
+setTimeout(function () {
+  if (state.gotFrames) { return; }
+  listMessage('Код плагина не отвечает. Перезапустите плагин пунктом меню.', 'err');
+}, 2500);
+</script>
+</body>
+</html>
